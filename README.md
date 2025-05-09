@@ -1,2 +1,353 @@
-# kube-home
-Kubernetes-powered homelab setup with Gateway API, Pi-hole, Jellyfin, and more.
+# Kubernetes Setup for a Simple Homelab
+
+## Overview
+This guide documents the set up of a single-node Kubernetes cluster on Ubuntu 24.04 LTS Server using MicroK8s or K3s. It covers persistent storage, networking configuration, and the deployment of essential services like Pi-hole, Jellyfin and Homepage. Services are first exposed using LoadBalancer, and later through Gateway API and Kong for ingress management.
+
+This setup is based on my personal preferences and could be used as a flexible starting point for building a simple homelab. Feel free to tweak, expand, or change components as needed.
+
+Here’s what the homepage looks like once services are up and running:
+
+![Homepage Screenshot](./images/homepagetest.png)
+
+
+## Table of Contents
+
+1. [Overview](#overview)  
+2. [Tech Stack](#tech-stack)  
+3. [Base System Installation](#base-system-installation)  
+4. [Kubernetes Setup (K3s or MicroK8s)](#kubernetes-setup-k3s-or-microk8s) 
+5. [MetalLB Setup](#metallb-load-balancer-setup)  
+6. [Service Deployments](#service-deployments)  
+7. [Kong Gateway Setup with Gateway API](#kong-gateway-setup-with-gateway-api)  
+8. [License](#license)
+
+## Tech Stack
+
+This section provides an overview of the core components used in the homelab setup:
+
+| Component            | Description                                          |
+| -------------------- | ------------------------------------------------- |
+| **Ubuntu 24.04 LTS** | Host operating system                             |
+| **K3s / MicroK8s**   | Lightweight Kubernetes distributions              |
+| **Local Path Provisioner** | HostPath-based CSI driver for local persistent storage |
+| **MetalLB**          | LoadBalancer implementation for bare-metal setups |
+| **Pi-hole**          | DNS-level ad blocking and local DNS resolver      |
+| **Jellyfin**         | Media streaming server                            |
+| **Omada Controller** | TP-Link SDN network controller                    |
+| **Homepage**         | Centralized dashboard linking homelab services    |
+| **Gateway API**      | Kubernetes-native gateway and routing API         |
+| **Kong Ingress**     | API gateway and Ingress controller                |
+
+
+
+## Base System Installation
+### Hardware Requirements
+This homelab setup can run on both bare-metal and virtualized environments. A minimum of 2 CPU cores, 8GB of RAM and 20-30GB of disk space is recommended for smooth operation.
+
+For reference, I use a Beelink Mini S12 Pro with an Intel N100 (4 cores) and 16 GB RAM, and it idles at 4–5% CPU and 23% memory usage with all current services running. Resource needs vary by service load — scale your hardware as needed.
+
+### OS Installation
+
+- Install **Ubuntu 24.04 LTS Server**
+- Set hostname: `k8s-prod-1`
+- Enable `ssh`
+- Create user: `ubuntu`
+
+> *Most Kubernetes manifests in this project assume the hostname `k8s-prod-1`, particularly for PersistentVolume declarations. If you choose a different hostname, be sure to update the relevant manifests accordingly.*
+
+### Persistent Volume Configuration
+
+Kubernetes manifests in this setup use `/data/k8s-local` as the centralized location for persistent container data.
+
+> 💡 **Optional**: Create a dedicated LVM volume for `/data`.
+
+```bash
+# Display existing volume groups
+sudo vgdisplay -v
+
+# Create a new logical volume
+sudo lvcreate -L <size>GiB -n data-lv -A y /dev/ubuntu-vg
+
+# Format it with XFS
+sudo mkfs.xfs /dev/ubuntu-vg/data-lv
+
+# Check UUID for fstab entry
+lsblk -f /dev/ubuntu-vg/data-lv
+```
+Edit `/etc/fstab` to mount on boot
+```bash
+UUID=<UUID_STRING>  /data  xfs  noatime,nodiratime  0  2
+```
+Mount the volume and create Kubernetes /data directory 
+```bash
+sudo mount /data
+sudo mkdir -m 750 /data/k8s-local
+```
+
+## Kubernetes Setup (K3s or MicroK8s)
+
+Install either **K3s** or **MicroK8s**. Both are lightweight Kubernetes distributions well-suited for homelab use cases. They are easy to install, require minimal maintenance, and offer robust performance.
+
+### Install K3s
+
+Install a single-node K3s cluster:
+```bash
+# Install K3s without Traefik and built-in service load balancer
+sudo su
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable=traefik --disable=servicelb" sh -
+```
+Verify that the cluster is running
+
+```bash
+kubectl get nodes -o wide
+systemctl status k3s
+```
+
+### Install Microk8s
+Install single node Microk8s cluster
+```bash
+sudo snap install microk8s --classic  
+```
+Verify microk8s is running
+```bash
+  sudo microk8s status
+  sudo microk8s kubectl get nodes -o wide
+```
+Enable essential MicroK8s add-ons
+```bash
+  sudo microk8s enable rbac
+  sudo microk8s enable dns
+  sudo microk8s enable hostpath-storage
+```
+
+## MetalLB Setup
+MetalLB enables LoadBalancer services in bare-metal clusters by assigning external IPs from a local address pool. This is critical for homelabs where cloud load balancers are unavailable. 
+
+⚠️ Install MetalLB after Kubernetes setup and before deploying services that require external access. Choose an IP range that does not overlap with your DHCP server.
+
+### MetalLB for K3s
+
+Install MetalLB with Helm
+```bash
+helm install metallb metallb/metallb --namespace metallb-system --create-namespace
+```
+Edit template file `metallb-addresspool.yaml` and include the IP range(s). Then apply the configuration.
+```bash
+cd ./metallb
+kubectl apply -f metallb-L2Advertisement.yaml -f metallb-addresspool.yaml
+```
+
+### MetalLB for Microk8s
+
+  Decide the IP range MetalLB should use to automatically allocate IPs. Be sure to use an IP range that does not overlap with your local network DHCP range.
+
+  Enable  Metallb Add-on. You will be prompted to enter the IP address range. Choose one outside your DHCP scope.
+  ```bash  
+  sudo microk8s enable metallb
+  ```
+
+To update the IP range later:
+```bash
+# Export current config
+kubectl get -n metallb-system ipaddresspool default-addresspool -o yaml  > default-addresspool.yaml
+# Edit the file and then re-apply
+kubectl apply -f  default-addresspool.yaml  
+```
+
+## Service Deployments
+
+Initially, each service is exposed using a `LoadBalancer` service to simplify connectivity and testing. Once verified, a centralized Gateway API configuration is introduced using Kong as the gateway controller.
+
+> ⚠️ Ensure MetalLB is installed and configured before deploying any services. See the [MetalLB Load Balancer Setup](#metallb-load-balancer-setup) for details.
+
+### Pi-hole DNS Server
+
+Deploy a containerized Pi-hole instance to provide DNS resolution and ad-blocking for the network.
+
+Create the directory for persistent data:
+```bash
+sudo mkdir -p -m 750 /data/k8s-local/pihole/etc
+```
+Choose one of the following options to deploy Pi-hole:
+
+Option 1 – Manual deployment using base manifests. 
+Edit the templates under pihole/base, then deploy:
+```bash
+cd ./pihole/base
+kubectl apply -f pihole-ns.yaml
+kubectl apply -f pihole-pv.yaml
+kubectl apply -f pihole-pvc.yaml
+kubectl apply -f pihole-cm.yaml
+kubectl apply -f pihole-secret.yaml
+kubectl apply -f pihole-deployment.yaml
+kubectl apply -f pihole-svc.yaml
+```
+Option 2 – Deploy using Kustomize overlay. Review and modify patch.yaml, configs.txt, and secrets.txt in the overlay directory. Then deploy:
+```bash
+cd ./pihole/overlays/template
+
+# Preview final manifest
+kubectl kustomize .
+
+# Check syntax
+kubectl kustomize . | kubectl apply -f - --dry-run=client
+
+# Apply
+kubectl kustomize . | kubectl apply -f -
+```
+Verify deployment and access the web UI:
+
+```bash
+kubectl get svc -n pihole -o wide  # Note the LoadBalancer EXTERNAL-IP
+```
+Visit:
+http://\<external-ip\>/admin/login
+
+### Jellyfin Media Server
+Create local directories for persistent data volumes:
+```bash
+sudo mkdir -p -m 750   /data/k8s-local/jellyfin/config
+sudo mkdir -p -m 750   /data/k8s-local/jellyfin/cache
+sudo mkdir /data/media  # Directory for media files
+```
+
+Edit jellyfin manifest templates and then deploy
+```bash
+cd ./jellyfin
+kubectl kustomize | kubectl apply --dry-run=client -f -  # Check syntax
+kubectl kustomize | kubectl apply -f -
+```
+Verify deployment
+```bash
+kubectl get svc -n jellyfin  # Check LoadBalancer EXTERNAL-IP
+http://<external-ip>  # Check access with browser
+```
+
+### Omada Software Controller
+Omada Software controller is relevant only if you have TP-Link Omada network devices.
+
+Create local directories for persistent data volumes
+```bash
+sudo mkdir -p -m 750 /data/k8s-local/omada/data
+sudo mkdir -p -m 750 /data/k8s-local/omada/logs
+```
+Edit templates and deploy
+```bash
+cd ./omada
+kubectl kustomize  .   # Check final yaml output  before applying it
+kubectl kustomize  .  |  kubectl apply -f - 
+```
+Verify
+```bash
+kubectl get svc -n omada  # Check LoadBalancer EXTERNAL-IP
+http://<external-ip>      # Check access with browser
+```
+### Homepage
+A simple central homepage for accessing all deployed services.
+
+Edit templates and deploy
+```bash
+cd ./homepage  
+kubectl kustomize . | kubectl apply -f - --dry-run=client
+kubectl kustomize . | kubectl apply -f -
+```
+
+Verify service has internal ClusterIP and deployment is OK
+```bash
+kubectl get deployment,svc -n homepage 
+```
+## Kong Gateway Setup with Gateway API
+Kong Gateway is configured using Gateway API resources via the Kong Ingress Controller (KIC), which acts as the control plane interface.
+### DNS Domain Required
+This example setup uses host-based routing (e.g., jellyfin.home.example.com) via Kong Gateway. For these to work, a functioning local DNS (like Pi-hole) is required. Ensure your DNS (e.g., Pi-hole) maps each service domain to the Kong LoadBalancer IP."
+
+You may use a custom local-only domain name such as:
+
+- example.home
+- example.lan
+- example.internal
+
+Avoid .local, which is reserved for mDNS and may cause conflicts.
+
+All provided HTTPRoute templates and the Kong gateway manifest in this repo usehome.example.com as a placeholder. Replace it with your actual domain and make sure your DNS server maps the relevant records to the Kong proxy IP as explained later in chapter [Configure Pi-hole DNS server](#configure-pi-hole-dns-server)
+
+### Install Kong
+Install Gateway API CRDS (standard channel)
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml
+```
+Install Kong Ingress Controller
+```bash
+helm repo add kong https://charts.konghq.com
+helm repo update
+helm install kong kong/ingress -n kong --create-namespace 
+```
+First edit templates and then create gatewayclass and gateway resources
+```bash
+cd ./gateway/kong
+kubectl apply -f gateway-ns.yaml -f kong-gc.yaml -f  kong-gtw.yaml 
+```
+
+Verify connectivity to Kong thru the exposed proxy address
+```bash
+kubectl get svc -n kong kong-gateway-proxy  # Check LoadBalancer EXTERNAL-IP
+curl -i external-ip  # Check connectivity
+```
+If Kong is working as expected output from curl should be as below. No routes have been configured yet so HTTP 404 is expected. 
+```
+HTTP/1.1 404 Not Found
+Content-Type: application/json; charset=utf-8
+Connection: keep-alive
+Content-Length: 48
+X-Kong-Response-Latency: 0
+Server: kong/3.0.0
+ 
+{"message":"no Route matched with those values"}
+```
+### Configure Pi-hole DNS Server
+Login to Pi-hole admin console and add the IP address of Kong gateway proxy external to local DNS records address list. Add also all deployed services pointing to the same Kong proxy IP address.
+
+Pi-hole: Setting -> Local DNS records
+
+| Domain                    | IP Address                         | 
+| -----------------------   | ------------------------   | 
+| proxy.home.example.com    | \<kong-proxy-external-ip\> | 
+| jellyfin.home.example.com | \<kong-proxy-external-ip\> |                         |
+| omada.home.example.com    | \<kong-proxy-external-ip\> |
+| pihole.home.example.com   | \<kong-proxy-external-ip\> |
+
+
+Next, set your client host to use Pi-hole as its DNS server. Use the LoadBalancer type IP address of the pihole kubernetes service as checked earlier. Do not use kong-proxy-external-ip here.
+
+Verify DNS is working on your client
+http://proxy.home.example.com # Expect the same HTTP 404 error
+
+### Attach HTTP routes to Kong Gateway
+
+Edit httproute templates and attach them to Kong gateway to get access to all services via the proxy IP address. Route templates are based mostly on Hostnames, few has also pathprefix routes. Before applying routes, ensure the Hostnames match your own domain as defined in the Pi-hole DNS records.
+
+Edit and apply routes:
+```bash
+cd ./gateway/kong
+kubectl apply -f homepage-route.yaml  # Hostnames + PathPrefix route
+kubectl apply -f jellyfin-route.yaml  # Hostnames + PathPrefix route
+kubectl apply -f pihole-route.yaml    # Hostnames route
+kubectl apply -f omada-route.yaml     # Hostnames route
+```
+Verify route states
+```bash
+kubectl get gc,gtw,httproute -A     # List and check state of gateway and all routes
+kubectl describe -n <namespace> httproute <httproute_name>
+```
+If gateway, HTTP routes and DNS are working properly, you should be able to access the following URLs in a browser:
+
+- http://proxy.home.example.com              # Should go to Homepage
+- http://\<gateway-proxy-ip-address\>        # Should go to Homepage
+- http://jellyfin.home.example.com           # Should go to Jellyfin
+- http://\<gateway-proxy-ip-address\>/jellyfin/  # Should go to Jellyfin
+- and so on...
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE).
+
