@@ -9,7 +9,6 @@ Here’s what the homepage looks like once services are up and running:
 
 ![Homepage Screenshot](./images/homepagetest.png)
 
-
 ## Table of Contents
 
 1. [Overview](#overview)  
@@ -38,13 +37,11 @@ This section provides an overview of the core components used in the homelab set
 | **Gateway API**      | Kubernetes-native gateway and routing API         |
 | **Kong Ingress**     | API gateway and Ingress controller                |
 
-
-
 ## Base System Installation
 ### Hardware Requirements
 This homelab setup can run on both bare-metal and virtualized environments. A minimum of 2 CPU cores, 8GB of RAM and 20-30GB of disk space is recommended for smooth operation.
 
-For reference, I use a Beelink Mini S12 Pro with an Intel N100 (4 cores) and 16 GB RAM, and it idles at 4–5% CPU and 23% memory usage with all current services running. Resource needs vary by service load — scale your hardware as needed.
+For reference, I use a Beelink Mini S12 Pro with an Intel N100 CPU (4 cores) and 16 GB RAM. It idles at 4–5% CPU and 23% memory usage with all current services running. Resource needs vary by service load — scale your hardware as needed.
 
 ### OS Installation
 
@@ -53,7 +50,7 @@ For reference, I use a Beelink Mini S12 Pro with an Intel N100 (4 cores) and 16 
 - Enable `ssh`
 - Create user: `ubuntu`
 
-> *Most Kubernetes manifests in this project assume the hostname `k8s-prod-1`, particularly for PersistentVolume declarations. If you choose a different hostname, be sure to update the relevant manifests accordingly.*
+>Most Kubernetes manifests in this project assume the hostname `k8s-prod-1`, particularly for PersistentVolume declarations. If you choose a different hostname, be sure to update the relevant manifests accordingly.
 
 ### Persistent Volume Configuration
 
@@ -86,7 +83,7 @@ sudo mkdir -m 750 /data/k8s-local
 
 ## Kubernetes Setup (K3s or MicroK8s)
 
-Install either **K3s** or **MicroK8s**. Both are lightweight Kubernetes distributions well-suited for homelab use cases. They are easy to install, require minimal maintenance, and offer robust performance.
+Install either **K3s** or **MicroK8s**. Both are lightweight Kubernetes distributions well-suited for homelab use cases. They are easy to install and require minimal maintenance.
 
 ### Install K3s
 
@@ -119,6 +116,48 @@ Enable essential MicroK8s add-ons
   sudo microk8s enable dns
   sudo microk8s enable hostpath-storage
 ```
+### Remote Access with Kubectl
+If you prefer to acesses the Kubernetes cluster from a remnote server using kubectl, export the kubeconfig file and copy it to your remote host.
+```bash
+# Microk8s
+sudo microk8s config > kubeconfig-microk8s.yaml
+
+# K3s
+sudo cat /etc/rancher/k3s/k3s.yaml > kubeconfig-k3s.yaml
+```
+Copy the file to your remote host and edit it. In the copied YAML file, update the server: address to the real IP address of your Kubernetes node:
+```bash
+clusters:
+- cluster:
+    server: https://<NODE-IP>:6443
+```
+
+Check the current kubectl version on the node
+```bash
+#MicroK8s
+microk8s kubectl version --short
+
+#K3s
+k3s kubectl version --short
+```
+
+Install matching kubectl version to your remote host. Replace v1.x.y with the version from above.
+
+```bash
+K8S_VERSION=v1.x.y     
+curl -LO https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kubectl
+chmod +x kubectl
+sudo mv kubectl /usr/local/bin/
+```
+💡 Version compatibility:
+kubectl is officially supported if its minor version is within ±1 of the Kubernetes API server version. For example, if your cluster is running Kubernetes v1.32.4, you can safely use kubectl version v1.31, v1.32, or v1.33. Patch versions (e.g., v1.32.*) are fully compatible and can be updated freely.
+
+Access the cluster using the edited kubectl config file
+```bash
+export KUBECONFIG=~/kubeconfig-<k3s|microk8s>.yaml
+kubectl get nodes -o wide
+```
+
 
 ## MetalLB Setup
 MetalLB enables LoadBalancer services in bare-metal clusters by assigning external IPs from a local address pool. This is critical for homelabs where cloud load balancers are unavailable. 
