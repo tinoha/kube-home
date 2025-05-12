@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  namespace: jellyfin
+  name: jellyfin-config
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOncePod
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+
+  local:
+    path: /data/k8s-local/jellyfin/config
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - k8s-prod-1 # Set to the node where the PV is located
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jellyfin-cache
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOncePod
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  local:
+    path: /data/k8s-local/jellyfin/cache
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - k8s-prod-1 # Set to the node where the PV is located
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jellyfin-media
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain # Prevents deletion of data if PV is deleted
+  storageClassName: local-path
+  hostPath:
+    path: /data/media # Directory for media files
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - k8s-prod-1 # Set to the node where the PV is located

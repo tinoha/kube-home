@@ -56,14 +56,13 @@ For reference, I use a Beelink Mini S12 Pro with an Intel N100 CPU (4 cores) and
 
 Kubernetes manifests in this setup use `/data/k8s-local` as the centralized location for persistent container data.
 
-> 💡 **Optional**: Create a dedicated LVM volume for `/data`.
-
+>💡 **Optional**: You can create a dedicated LVM volume for `/data` to separate persistent data from the root filesystem.
 ```bash
 # Display existing volume groups
 sudo vgdisplay -v
 
-# Create a new logical volume
-sudo lvcreate -L <size>GiB -n data-lv -A y /dev/ubuntu-vg
+# Create a new logical volume (replace <size> with the desired size in GB)
+sudo lvcreate -L <size>G -n data-lv /dev/ubuntu-vg
 
 # Format it with XFS
 sudo mkfs.xfs /dev/ubuntu-vg/data-lv
@@ -73,12 +72,16 @@ lsblk -f /dev/ubuntu-vg/data-lv
 ```
 Edit `/etc/fstab` to mount on boot
 ```bash
-UUID=<UUID_STRING>  /data  xfs  noatime,nodiratime  0  2
+UUID=<UUID_STRING>  /data  xfs  defaults,noatime,nodiratime  0  2
 ```
-Mount the volume and create Kubernetes /data directory 
+Then, mount the volume 
 ```bash
+sudo mkdir /data
 sudo mount /data
-sudo mkdir -m 750 /data/k8s-local
+```
+➡️ Create the directory for Kubernetes persistent data. This is required regardless of volume creation.
+```bash
+sudo mkdir -p -m 750 /data/k8s-local
 ```
 
 ## Kubernetes Setup (K3s or MicroK8s)
@@ -107,14 +110,15 @@ sudo snap install microk8s --classic
 ```
 Verify microk8s is running
 ```bash
-  sudo microk8s status
+  sudo microk8s status --wait-ready 
   sudo microk8s kubectl get nodes -o wide
 ```
-Enable essential MicroK8s add-ons
-```bash
+Ensure essential MicroK8s add-ons are enabled
+```bash   
   sudo microk8s enable rbac
   sudo microk8s enable dns
   sudo microk8s enable hostpath-storage
+  sudo microk8s enable helm3
 ```
 ### Remote Access with Kubectl
 If you prefer to acesses the Kubernetes cluster from a remnote server using kubectl, export the kubeconfig file and copy it to your remote host.
@@ -134,20 +138,19 @@ clusters:
 
 Check the current kubectl version on the node
 ```bash
-#MicroK8s
-microk8s kubectl version --short
+# MicroK8s
+microk8s kubectl version
 
-#K3s
-k3s kubectl version --short
+# K3s
+k3s kubectl version
 ```
 
-Install matching kubectl version to your remote host. Replace v1.x.y with the version from above.
+Install matching kubectl version to your remote host. Replace v1.x.y with the version from above. 
 
 ```bash
 K8S_VERSION=v1.x.y     
 curl -LO https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kubectl
-chmod +x kubectl
-sudo mv kubectl /usr/local/bin/
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 ```
 💡 Version compatibility:
 kubectl is officially supported if its minor version is within ±1 of the Kubernetes API server version. For example, if your cluster is running Kubernetes v1.32.4, you can safely use kubectl version v1.31, v1.32, or v1.33. Patch versions (e.g., v1.32.*) are fully compatible and can be updated freely.
@@ -157,6 +160,8 @@ Access the cluster using the edited kubectl config file
 export KUBECONFIG=~/kubeconfig-<k3s|microk8s>.yaml
 kubectl get nodes -o wide
 ```
+
+For detailed installation and configuration instructions, refer to the official Kubernetes documentation: [Install `kubectl`](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/#install-kubectl-binary-with-curl-on-linux)
 
 
 ## MetalLB Setup
@@ -201,7 +206,7 @@ Initially, each service is exposed using a `LoadBalancer` service to simplify co
 
 ### Pi-hole DNS Server
 
-Deploy a containerized Pi-hole instance to provide DNS resolution and ad-blocking for the network.
+Pi-hole provides DNS resolution and ad-blocking for the network.
 
 Create the directory for persistent data:
 ```bash
@@ -273,8 +278,8 @@ sudo mkdir -p -m 750 /data/k8s-local/omada/logs
 Edit templates and deploy
 ```bash
 cd ./omada
-kubectl kustomize  .   # Check final yaml output  before applying it
-kubectl kustomize  .  |  kubectl apply -f - 
+kubectl kustomize .   # Check final yaml output  before applying it
+kubectl kustomize . | kubectl apply -f - 
 ```
 Verify
 ```bash
@@ -296,14 +301,16 @@ Verify service has internal ClusterIP and deployment is OK
 kubectl get deployment,svc -n homepage 
 ```
 ## Kong Gateway Setup with Gateway API
-Kong Gateway is configured using Gateway API resources via the Kong Ingress Controller (KIC), which acts as the control plane interface.
-### DNS Domain Required
-This example setup uses host-based routing (e.g., jellyfin.home.example.com) via Kong Gateway. For these to work, a functioning local DNS (like Pi-hole) is required. Ensure your DNS (e.g., Pi-hole) maps each service domain to the Kong LoadBalancer IP."
+Kong Gateway is configured using Gateway API resources via the Kong Ingress Controller (KIC), which acts as the control plane.
+### Choose Your DNS domain
+This setup uses host-based routing (e.g. jellyfin.home.example.com) via Kong Gateway. For routing to work, a functioning local DNS (like Pi-hole) must resolve these domain names to the Kong proxy's external IP. Alternatively, you can define static entries in your system’s hosts file (e.g., /etc/hosts on Linux or macOS).
 
-You may use a custom local-only domain name such as:
+>The key requirement is that each fully qualified domain name resolves to the Kong LoadBalancer IP.
+
+If you don't have a public domain, you may also use a custom local-only domain, such as:
 
 - example.home
-- example.lan
+- example.lan    -> .lan is the PI-hole default
 - example.internal
 
 Avoid .local, which is reserved for mDNS and may cause conflicts.
@@ -327,12 +334,12 @@ cd ./gateway/kong
 kubectl apply -f gateway-ns.yaml -f kong-gc.yaml -f  kong-gtw.yaml 
 ```
 
-Verify connectivity to Kong thru the exposed proxy address
+Verify connectivity to Kong via the external proxy address:
 ```bash
 kubectl get svc -n kong kong-gateway-proxy  # Check LoadBalancer EXTERNAL-IP
 curl -i external-ip  # Check connectivity
 ```
-If Kong is working as expected output from curl should be as below. No routes have been configured yet so HTTP 404 is expected. 
+If Kong is working correctly, the `curl` output should show below HTTP 404 error as no routes have been configured yet. 
 ```
 HTTP/1.1 404 Not Found
 Content-Type: application/json; charset=utf-8
@@ -344,22 +351,29 @@ Server: kong/3.0.0
 {"message":"no Route matched with those values"}
 ```
 ### Configure Pi-hole DNS Server
-Login to Pi-hole admin console and add the IP address of Kong gateway proxy external to local DNS records address list. Add also all deployed services pointing to the same Kong proxy IP address.
+Login to the Pi-hole admin console and add DNS records that resolve the Kong proxy external IP to your service hostnames.
 
-Pi-hole: Setting -> Local DNS records
+Pi-hole UI path: *Setting -> Local DNS records*
 
-| Domain                    | IP Address                         | 
+| Domain                    | IP Address                 | 
 | -----------------------   | ------------------------   | 
 | proxy.home.example.com    | \<kong-proxy-external-ip\> | 
-| jellyfin.home.example.com | \<kong-proxy-external-ip\> |                         |
+| jellyfin.home.example.com | \<kong-proxy-external-ip\> |
 | omada.home.example.com    | \<kong-proxy-external-ip\> |
 | pihole.home.example.com   | \<kong-proxy-external-ip\> |
 
+Ensure Pi-hole domain is set correctly (e.g., home.example.com). You can set this via:
+- Environment variable:  `FTLCONF_dns_domain`
+- Admin UI: *Settings -> All Settings -> dns.domain*
 
-Next, set your client host to use Pi-hole as its DNS server. Use the LoadBalancer type IP address of the pihole kubernetes service as checked earlier. Do not use kong-proxy-external-ip here.
+(Default is lan)
+Finally, configure your client system to use the Pi-hole Kubernetes service LoadBalancer IP as its DNS server (not the Kong proxy IP).
 
-Verify DNS is working on your client
-http://proxy.home.example.com # Expect the same HTTP 404 error
+You can then verify DNS resolution:
+```bash
+curl http://proxy.home.example.com
+```
+Expected result is still the same HTTP 404 unless routes are configured.
 
 ### Attach HTTP routes to Kong Gateway
 
