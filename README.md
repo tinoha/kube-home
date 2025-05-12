@@ -307,11 +307,14 @@ This setup uses host-based routing (e.g. jellyfin.home.example.com) via Kong Gat
 
 >The key requirement is that each fully qualified domain name resolves to the Kong LoadBalancer IP.
 
-If you don't have a public domain, you may also use a custom local-only domain, such as:
+If you don't have a public domain, you can use a custom local-only domain for internal DNS resolution. Suitable examples include:
 
-- example.home
-- example.lan    -> .lan is the PI-hole default
-- example.internal
+- `example.home`
+- `example.lan` – commonly used in local networks (e.g., Pi-hole default)
+- `example.internal`
+- `example.com` – used throughout this project's manifests; [reserved for documentation and testing](https://datatracker.ietf.org/doc/html/rfc2606), safe to use in local environments
+
+> **Note:** Ensure your DNS server (e.g., Pi-hole, dnsmasq, or local resolver) is properly configured to resolve these custom domains to the correct internal IPs.
 
 Avoid .local, which is reserved for mDNS and may cause conflicts.
 
@@ -366,7 +369,7 @@ Ensure Pi-hole domain is set correctly (e.g., home.example.com). You can set thi
 - Environment variable:  `FTLCONF_dns_domain`
 - Admin UI: *Settings -> All Settings -> dns.domain*
 
-(Default is lan)
+(Pi-hole default is *lan*)
 Finally, configure your client system to use the Pi-hole Kubernetes service LoadBalancer IP as its DNS server (not the Kong proxy IP).
 
 You can then verify DNS resolution:
