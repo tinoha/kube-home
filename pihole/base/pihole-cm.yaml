@@ -5,5 +5,5 @@ metadata:
   namespace: pihole
 data:
   FTLCONF_dns_upstreams: "1.1.1.1"  # Set to your preferred upstream DNS server
-  FTLCONF_dns_domain: ""  # Set to your DNS domain. If left empty, the DNS domain used by your Pi-hole is ".lan"
+  FTLCONF_dns_domain: "home.example.com"  # Set to your DNS domain. If left empty, the DNS domain used by your Pi-hole is ".lan"
   TZ: "Etc/UTC" # Set to your timezone. For example, "America/New_York"
