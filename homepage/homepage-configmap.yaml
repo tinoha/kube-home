@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homepage
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+data:
+  kubernetes.yaml: |
+    mode: cluster
+  settings.yaml: ""
+  #settings.yaml: |
+  #  providers:
+  #    longhorn:
+  #      url: https://longhorn.my.network
+  custom.css: ""
+  custom.js: ""
+  bookmarks.yaml: |
+      - Links:
+          # Adjust the links to your needs, purpose  of the examples is to show how to add links and also allow connection to external IPs without using a domain name and Kong proxy.
+          # - Jellyfin:
+          #     - abbr: J
+          #       href: https://<external-ip>/jellyfin/  # Set to externalLoadbalancer IP (kubectl get svc jellyfin -n jellyfin)
+          # - Printer:
+          #     - abbr: P
+          #       href: https://<printer-ip>
+          # - Omada Controller:
+          #     - abbr: O
+          #       href: https://<external-ip> # Set to externalLoadbalancer IP (kubectl get svc omada-controller -n omada)
+          # - Pihole:
+          #     - abbr: P
+          #       href: https://<external-ip>/admin/ # Set to externalLoadbalancer IP (kubectl get svc pihole -n pihole)
+            - Homepage:
+                - abbr: H
+                  href: https://gethomepage.dev/ 
+  services.yaml: |
+    - Media:
+        - Jellyfin:
+            href: http://jellyfin.home.example.com
+            description: Jellyfin Media Server
+            icon: jellyfin.png
+            siteMonitor: http://jellyfin.jellyfin.svc.cluster.local
+            
+    - Utility:
+        - Pi-hole:
+            href: https://pihole.home.example.com/admin/
+            description: Pi-hole Local DNS server
+            icon: pi-hole.png
+            siteMonitor: http://pihole.pihole.svc.cluster.local
+        - Omada Controller:
+            href: https://omada.home.example.com
+            description: TP-Link Omada Software Controller
+            icon: omada.png
+            siteMonitor: https://omada-controller.omada.svc.cluster.local
+
+    # - My Third Group:
+    #     - My Third Service:
+    #         href: http://localhost/
+    #         description: Homepage is 😎
+  widgets.yaml: |
+    # - kubernetes:
+    #     cluster:
+    #       show: false
+    #       cpu: false
+    #       memory: false
+    #       showLabel: false
+    #       label: "cluster"
+    #     nodes:
+    #       show: false
+    #       cpu: false
+    #       memory: false
+    #       showLabel: false
+    - resources:
+        backend: resources
+        expanded: true
+        cpu: true
+        memory: true
+        network: default
+        #uptime: true
+        refresh: 5000
+
+    - search:
+        provider: google
+        target: _blank
+  docker.yaml: ""
