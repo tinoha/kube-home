@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: pihole
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+patches:
+  - path: patch.yaml
+
+secretGenerator:
+  - name: pihole-secret
+    envs:
+      - secrets.txt
+
+configMapGenerator:
+  - name: pihole-cm
+    envs:
+      - configs.txt
