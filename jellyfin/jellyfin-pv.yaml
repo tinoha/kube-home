@@ -21,7 +21,7 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - k8s-prod-1 # Set to the node where the PV is located
+                - k8s-test-1 # Set to the node where the PV is located
 
 ---
 apiVersion: v1
@@ -45,7 +45,7 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - k8s-prod-1 # Set to the node where the PV is located
+                - k8s-test-1 # Set to the node where the PV is located
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -68,4 +68,4 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - k8s-prod-1 # Set to the node where the PV is located
+                - k8s-test-1 # Set to the node where the PV is located

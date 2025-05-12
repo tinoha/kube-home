@@ -46,11 +46,11 @@ For reference, I use a Beelink Mini S12 Pro with an Intel N100 CPU (4 cores) and
 ### OS Installation
 
 - Install **Ubuntu 24.04 LTS Server**
-- Set hostname: `k8s-prod-1`
+- Set hostname: `k8s-test-1`
 - Enable `ssh`
 - Create user: `ubuntu`
 
->Most Kubernetes manifests in this project assume the hostname `k8s-prod-1`, particularly for PersistentVolume declarations. If you choose a different hostname, be sure to update the relevant manifests accordingly.
+>Most Kubernetes manifests in this project assume the hostname `k8s-test-1`, particularly for PersistentVolume declarations. If you choose a different hostname, be sure to update the relevant manifests accordingly.
 
 ### Persistent Volume Configuration
 

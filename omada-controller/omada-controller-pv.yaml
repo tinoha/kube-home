@@ -16,7 +16,7 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - k8s-prod-1
+                - k8s-test-1
   persistentVolumeReclaimPolicy: Retain
   storageClassName: local-path
   volumeMode: Filesystem
@@ -40,7 +40,7 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - k8s-prod-1
+                - k8s-test-1
 
   persistentVolumeReclaimPolicy: Retain
   storageClassName: local-path
