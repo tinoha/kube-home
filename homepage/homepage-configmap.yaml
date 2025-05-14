@@ -36,7 +36,7 @@ data:
   services.yaml: |
     - Media:
         - Jellyfin:
-            href: http://jellyfin.home.example.com
+            href: https://jellyfin.home.example.com
             description: Jellyfin Media Server
             icon: jellyfin.png
             siteMonitor: http://jellyfin.jellyfin.svc.cluster.local

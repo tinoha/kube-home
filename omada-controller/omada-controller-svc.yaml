@@ -6,12 +6,11 @@ metadata:
   labels:
     app: omada-controller
   annotations:
-    konghq.com/protocol: "https"
+    konghq.com/protocol: "https" # Use https 
     konghq.com/verify: "false" # disables TLS verification (for self-signed certs)
 spec:
   type: LoadBalancer
   # loadBalancerIP: YOUR_OMADA_IP_ADDRESS # Set a static IP for the LoadBalancer, must be in the same subnet as the LoadBalancer IP pools
-  # externalTrafficPolicy: Local # Preserve source IPs
   ports:
     - name: admin-http
       port: 80

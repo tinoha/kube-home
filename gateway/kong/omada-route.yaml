@@ -6,7 +6,7 @@ metadata:
   labels:
     app: omada-controller
   annotations:
-    konghq.com/protocols: https # Redirect always to https
+    konghq.com/protocols: "https" # Redirect always to https
     konghq.com/https-redirect-status-code: "301"
 spec:
   parentRefs:

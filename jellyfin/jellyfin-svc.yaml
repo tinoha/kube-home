@@ -11,3 +11,6 @@ spec:
     - port: 80
       targetPort: 8096
       name: http
+    - port: 8096
+      targetPort: 8096
+      name: http-8096

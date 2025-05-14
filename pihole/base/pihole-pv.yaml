@@ -20,4 +20,4 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - YOUR_NODE_NAME # example: k8s-node
+                - k8s-test-1 # Set to the node where the PV is located

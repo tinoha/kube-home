@@ -4,8 +4,8 @@ metadata:
   name: jellyfin
   namespace: jellyfin
   annotations:
-    konghq.com/protocols: https # Redirect always to https
-    konghq.com/https-redirect-status-code: "301"
+    # konghq.com/protocols: "https" # Redirect always to https
+    # konghq.com/https-redirect-status-code: "301"
 spec:
   parentRefs:
     - name: kong
@@ -17,7 +17,7 @@ spec:
       backendRefs:
         - name: jellyfin
           kind: Service
-          port: 80
+          port: 8096
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -26,8 +26,8 @@ metadata:
   namespace: jellyfin
   annotations:
     konghq.com/strip-path: "true"
-    konghq.com/protocols: https # Redirect always to https
-    konghq.com/https-redirect-status-code: "301"
+    # konghq.com/protocols: "https" # Redirect always to https
+    # konghq.com/https-redirect-status-code: "301"
 spec:
   parentRefs:
     - name: kong
@@ -40,4 +40,4 @@ spec:
       backendRefs:
         - name: jellyfin
           kind: Service
-          port: 80
+          port: 8096

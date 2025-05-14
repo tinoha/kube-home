@@ -1,9 +1,9 @@
-# Kubernetes Setup for a Simple Homelab
+# Kube-Home: Advanced Kubernetes Home Server Setup
 
 ## Overview
-This guide documents the set up of a single-node Kubernetes cluster on Ubuntu 24.04 LTS Server using MicroK8s or K3s. It covers persistent storage, networking configuration, and the deployment of essential services like Pi-hole, Jellyfin and Homepage. Services are first exposed using LoadBalancer, and later through Gateway API and Kong for ingress management.
+This guide documents the set up of a single-node Kubernetes cluster on Ubuntu 24.04 LTS Server using MicroK8s or K3s. It includes configurations for persistent storage, networking and the deployment of essential services like Pi-hole, Jellyfin and Homepage. Services are exposed using both LoadBalancer, and Gateway API through Kong Gateway for ingress management.
 
-This setup is based on my personal preferences and could be used as a flexible starting point for building a simple homelab. Feel free to tweak, expand, or change components as needed.
+This setup can serves as a flexible starting point for building a Kubernetes-based home server. While based on personal preferences, it can be easily customized to suit individual needs.
 
 Here’s what the homepage looks like once services are up and running:
 
@@ -24,7 +24,7 @@ Here’s what the homepage looks like once services are up and running:
 
 This section provides an overview of the core components used in the homelab setup:
 
-| Component            | Description                                          |
+| Component            | Description                                       |
 | -------------------- | ------------------------------------------------- |
 | **Ubuntu 24.04 LTS** | Host operating system                             |
 | **K3s / MicroK8s**   | Lightweight Kubernetes distributions              |
@@ -34,8 +34,7 @@ This section provides an overview of the core components used in the homelab set
 | **Jellyfin**         | Media streaming server                            |
 | **Omada Controller** | TP-Link SDN network controller                    |
 | **Homepage**         | Centralized dashboard linking homelab services    |
-| **Gateway API**      | Kubernetes-native gateway and routing API         |
-| **Kong Ingress**     | API gateway and Ingress controller                |
+| **Kong Ingress Controller (KIC)** | Manages Gateway API for Kong Gateway |
 
 ## Base System Installation
 ### Hardware Requirements
@@ -339,10 +338,11 @@ kubectl apply -f gateway-ns.yaml -f kong-gc.yaml -f  kong-gtw.yaml
 
 Verify connectivity to Kong via the external proxy address:
 ```bash
-kubectl get svc -n kong kong-gateway-proxy  # Check LoadBalancer EXTERNAL-IP
-curl -i external-ip  # Check connectivity
+kubectl get svc -n kong kong-gateway-proxy  # Check LoadBalancer EXTERNAL-IP of the proxy
+curl -i <external-ip>  # Check connectivity to Kong proxy, use the LB EXTERNAL-IP
 ```
-If Kong is working correctly, the `curl` output should show below HTTP 404 error as no routes have been configured yet. 
+If Kong is working correctly, the `curl` output should show below HTTP 404 error as no routes have been configured yet. By default, Kong returns a 404 error when it cannot match a request to any defined route. Once you configure HTTP routes, Kong will forward requests to the appropriate backend services based on the routing rules.
+
 ```
 HTTP/1.1 404 Not Found
 Content-Type: application/json; charset=utf-8
@@ -353,6 +353,8 @@ Server: kong/3.0.0
  
 {"message":"no Route matched with those values"}
 ```
+
+
 ### Configure Pi-hole DNS Server
 Login to the Pi-hole admin console and add DNS records that resolve the Kong proxy external IP to your service hostnames.
 
@@ -376,13 +378,18 @@ You can then verify DNS resolution:
 ```bash
 curl http://proxy.home.example.com
 ```
-Expected result is still the same HTTP 404 unless routes are configured.
 
 ### Attach HTTP routes to Kong Gateway
+HTTP routes define how incoming requests are forwarded to backend services based on hostnames, paths, or other criteria. In this section, HTTP routes are configured to enable access to the services through the Kong Gateway.
 
-Edit httproute templates and attach them to Kong gateway to get access to all services via the proxy IP address. Route templates are based mostly on Hostnames, few has also pathprefix routes. Before applying routes, ensure the Hostnames match your own domain as defined in the Pi-hole DNS records.
+Review httproute templates and attach them to Kong gateway to get access to the services via the proxy IP address. Most route templates are based on hostnames, with some also including path-prefix routing. Before applying routes, ensure the `hostnames` field in each HTTPRoute template matches your domain name as configured in the DNS. Here is snippet from `homepage-route.yaml` template:
 
-Edit and apply routes:
+```yaml
+hostnames:
+  - proxy.home.example.com
+```
+
+Review and edit templates, then apply:
 ```bash
 cd ./gateway/kong
 kubectl apply -f homepage-route.yaml  # Hostnames + PathPrefix route
@@ -390,17 +397,20 @@ kubectl apply -f jellyfin-route.yaml  # Hostnames + PathPrefix route
 kubectl apply -f pihole-route.yaml    # Hostnames route
 kubectl apply -f omada-route.yaml     # Hostnames route
 ```
-Verify route states
+Verify the state of gateway and routes
 ```bash
-kubectl get gc,gtw,httproute -A     # List and check state of gateway and all routes
+# Check state of gateway and all routes
+kubectl get gc,gtw,httproute -A
+
+# Describe a specific HTTP route for detailed information
 kubectl describe -n <namespace> httproute <httproute_name>
 ```
 If gateway, HTTP routes and DNS are working properly, you should be able to access the following URLs in a browser:
 
-- http://proxy.home.example.com              # Should go to Homepage
-- http://\<gateway-proxy-ip-address\>        # Should go to Homepage
-- http://jellyfin.home.example.com           # Should go to Jellyfin
-- http://\<gateway-proxy-ip-address\>/jellyfin/  # Should go to Jellyfin
+- http://proxy.home.example.com :  Access the Homepage service
+- http://\<gateway-proxy-ip-address\> : Access the Homepage service
+- http://jellyfin.home.example.com : Access the Jellyfin service
+- http://\<gateway-proxy-ip-address\>/jellyfin/  # Access the Jellyfin service (keep trailing /)
 - and so on...
 
 ## License

@@ -29,7 +29,7 @@ spec:
           imagePullPolicy: Always
           env:
             - name: HOMEPAGE_ALLOWED_HOSTS
-              value: "home.example.com,proxy.home.example.com" # Change to your domain, include also LoadBalancer IP of Kong proxy to the list (kubectl get svc -n kong).
+              value: "home.example.com,proxy.home.example.com" # Change to your domain, add also LoadBalancer IP of Kong proxy to the list (kubectl get svc -n kong).
           ports:
             - name: http
               containerPort: 3000

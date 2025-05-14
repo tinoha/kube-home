@@ -25,5 +25,5 @@ spec:
           - kind: Secret
             name: home-example-com-tls  # This is the secret that contains the TLS certificate for the domain home.example.com
             # The secret must be in the same namespace as the Gateway.
-            # If secret does not exist, Kong will provide a self-signed certificate.
+            # If secret does not exist, Kong will present a self-signed certificate.
             namespace: gateway
