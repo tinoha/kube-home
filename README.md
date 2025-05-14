@@ -22,23 +22,23 @@ Here’s what the homepage looks like once services are up and running:
 
 ## Tech Stack
 
-This section provides an overview of the core components used in the homelab setup:
+This section provides an overview of the core components used in the setup:
 
-| Component            | Description                                       |
-| -------------------- | ------------------------------------------------- |
-| **Ubuntu 24.04 LTS** | Host operating system                             |
-| **K3s / MicroK8s**   | Lightweight Kubernetes distributions              |
+| Component                                          | Description                                       |
+| ------------------------------------------------- | ------------------------------------------------- |
+| **[Ubuntu 24.04 LTS](https://ubuntu.com/server)**       | Host operating system                             |
+| **[K3s](https://k3s.io/) / [MicroK8s](https://microk8s.io/)** | Lightweight Kubernetes distributions              |
 | **Local Path Provisioner** | HostPath-based CSI driver for local persistent storage |
-| **MetalLB**          | LoadBalancer implementation for bare-metal setups |
-| **Pi-hole**          | DNS-level ad blocking and local DNS resolver      |
-| **Jellyfin**         | Media streaming server                            |
-| **Omada Controller** | TP-Link SDN network controller                    |
-| **Homepage**         | Centralized dashboard linking homelab services    |
-| **Kong Ingress Controller (KIC)** | Manages Gateway API for Kong Gateway |
+| **[MetalLB](https://metallb.io/)**          | LoadBalancer implementation for bare-metal setups |
+| **[Pi-hole](https://pi-hole.net/)**          | DNS-level ad blocking and local DNS resolver      |
+| **[Jellyfin](https://jellyfin.org/)**         | Media streaming server                            |
+| **[Omada Software Controller](https://www.omadanetworks.com/en/business-networking/omada/controller/)** | TP-Link SDN network controller                    |
+| **[Homepage](https://gethomepage.dev/)**         | Homepage for linking various services    |
+| **[Kong Ingress Controller (KIC)](https://konghq.com/products/kong-ingress-controller)** | Manages Gateway API for Kong Gateway |
 
 ## Base System Installation
 ### Hardware Requirements
-This homelab setup can run on both bare-metal and virtualized environments. A minimum of 2 CPU cores, 8GB of RAM and 20-30GB of disk space is recommended for smooth operation.
+This homeserver setup can run on both bare-metal and virtualized environments. A minimum of 2 CPU cores, 8GB of RAM and 20-30GB of disk space is recommended for smooth operation.
 
 For reference, I use a Beelink Mini S12 Pro with an Intel N100 CPU (4 cores) and 16 GB RAM. It idles at 4–5% CPU and 23% memory usage with all current services running. Resource needs vary by service load — scale your hardware as needed.
 
@@ -85,7 +85,7 @@ sudo mkdir -p -m 750 /data/k8s-local
 
 ## Kubernetes Setup (K3s or MicroK8s)
 
-Install either **K3s** or **MicroK8s**. Both are lightweight Kubernetes distributions well-suited for homelab use cases. They are easy to install and require minimal maintenance.
+Install either **K3s** or **MicroK8s**. Both are lightweight Kubernetes distributions well-suited for a homelab use case. They are easy to install and require minimal maintenance.
 
 ### Install K3s
 
