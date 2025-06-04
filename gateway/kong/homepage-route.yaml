@@ -44,7 +44,8 @@ spec:
     - name: kong
       namespace: gateway
   hostnames:
-    - "proxy.home.example.com"
+    - "proxy.home.example.com" # This is the hostname for the homepage route. Update with your domain if necessary.
+    - "home.example.com" # This is the hostname for the homepage route. Update with your domain if necessary.
   rules:
     - matches:
       backendRefs:

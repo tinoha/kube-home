@@ -3,7 +3,7 @@
 ## Overview
 This guide documents the set up of a single-node Kubernetes cluster on Ubuntu 24.04 LTS Server using MicroK8s or K3s. It includes configurations for persistent storage, networking and the deployment of essential services like Pi-hole, Jellyfin and Homepage. Services are exposed using both LoadBalancer, and Gateway API through Kong Gateway for ingress management.
 
-This setup can serves as a flexible starting point for building a Kubernetes-based home server. While based on personal preferences, it can be easily customized to suit individual needs.
+This setup serves as a flexible starting point for building a Kubernetes-based home server. While based on personal preferences, it can be easily customized to suit individual needs.
 
 Here’s what the homepage looks like once services are up and running:
 
@@ -17,8 +17,9 @@ Here’s what the homepage looks like once services are up and running:
 4. [Kubernetes Setup (K3s or MicroK8s)](#kubernetes-setup-k3s-or-microk8s) 
 5. [MetalLB Setup](#metallb-load-balancer-setup)  
 6. [Service Deployments](#service-deployments)  
-7. [Kong Gateway Setup with Gateway API](#kong-gateway-setup-with-gateway-api)  
-8. [License](#license)
+7. [Kong Gateway Setup with Gateway API](#kong-gateway-setup-with-gateway-api)
+8. [Manage Certificates with cert-manager and Let's Encrypt](#manage-certificates-with-cert-manager-and-lets-encrypt)  
+9. [License](#license)
 
 ## Tech Stack
 
@@ -35,10 +36,12 @@ This section provides an overview of the core components used in the setup:
 | **[Omada Software Controller](https://www.omadanetworks.com/en/business-networking/omada/controller/)** | TP-Link SDN network controller                    |
 | **[Homepage](https://gethomepage.dev/)**         | Homepage for linking various services    |
 | **[Kong Ingress Controller (KIC)](https://konghq.com/products/kong-ingress-controller)** | Manages Gateway API for Kong Gateway |
+| **[cert-manager](https://cert-manager.io/)** | Automates X.509 certificate management and ACME DNS-01 challenges |
+
 
 ## Base System Installation
 ### Hardware Requirements
-This homeserver setup can run on both bare-metal and virtualized environments. A minimum of 2 CPU cores, 8GB of RAM and 20-30GB of disk space is recommended for smooth operation.
+This home server setup can run on both bare-metal and virtualized environments. A minimum of 2 CPU cores, 8GB of RAM and 20-30GB of disk space is recommended for smooth operation.
 
 For reference, I use a Beelink Mini S12 Pro with an Intel N100 CPU (4 cores) and 16 GB RAM. It idles at 4–5% CPU and 23% memory usage with all current services running. Resource needs vary by service load — scale your hardware as needed.
 
@@ -102,8 +105,8 @@ kubectl get nodes -o wide
 systemctl status k3s
 ```
 
-### Install Microk8s
-Install single node Microk8s cluster
+### Install MicroK8
+Install single node MicroK8s cluster
 ```bash
 sudo snap install microk8s --classic  
 ```
@@ -112,7 +115,7 @@ Verify microk8s is running
   sudo microk8s status --wait-ready 
   sudo microk8s kubectl get nodes -o wide
 ```
-Ensure essential MicroK8s add-ons are enabled
+Enable essential MicroK8s add-ons:
 ```bash   
   sudo microk8s enable rbac
   sudo microk8s enable dns
@@ -120,9 +123,9 @@ Ensure essential MicroK8s add-ons are enabled
   sudo microk8s enable helm3
 ```
 ### Remote Access with Kubectl
-If you prefer to acesses the Kubernetes cluster from a remnote server using kubectl, export the kubeconfig file and copy it to your remote host.
+If you prefer to access the Kubernetes cluster from a remote server using kubectl, export the kubeconfig file and copy it to your remote host.
 ```bash
-# Microk8s
+# MicroK8s
 sudo microk8s config > kubeconfig-microk8s.yaml
 
 # K3s
@@ -174,17 +177,17 @@ Install MetalLB with Helm
 ```bash
 helm install metallb metallb/metallb --namespace metallb-system --create-namespace
 ```
-Edit template file `metallb-addresspool.yaml` and include the IP range(s). Then apply the configuration.
+Edit template file `metallb-addresspool.yaml` to define your range(s). Then apply the configuration.
 ```bash
 cd ./metallb
 kubectl apply -f metallb-L2Advertisement.yaml -f metallb-addresspool.yaml
 ```
 
-### MetalLB for Microk8s
+### MetalLB for MicroK8s
 
   Decide the IP range MetalLB should use to automatically allocate IPs. Be sure to use an IP range that does not overlap with your local network DHCP range.
 
-  Enable  Metallb Add-on. You will be prompted to enter the IP address range. Choose one outside your DHCP scope.
+  Enable  MetalLB add-on. You will be prompted to enter the IP address range. Choose one outside your DHCP scope.
   ```bash  
   sudo microk8s enable metallb
   ```
@@ -374,7 +377,7 @@ Ensure Pi-hole domain is set correctly (e.g., home.example.com). You can set thi
 (Pi-hole default is *lan*)
 Finally, configure your client system to use the Pi-hole Kubernetes service LoadBalancer IP as its DNS server (not the Kong proxy IP).
 
-You can then verify DNS resolution:
+Verify DNS resolution:
 ```bash
 curl http://proxy.home.example.com
 ```
@@ -413,6 +416,140 @@ If gateway, HTTP routes and DNS are working properly, you should be able to acce
 - http://\<gateway-proxy-ip-address\>/jellyfin/  # Access the Jellyfin service (keep trailing /)
 - and so on...
 
+## Manage Certificates with cert-manager and Let's Encrypt
+This setup uses cert-manager to automatically provision and renew HTTPS certificates for services exposed through Kong Gateway. It requests a wildcard TLS certificate from Let's Encrypt using the DNS-01 ACME challenge, stores the resulting certificate in a Kubernetes secret, and uses it to terminate HTTPS traffic in Kong Gateway.
+
+cert-manager is a Kubernetes controller that automates the management and renewal of TLS certificates.
+
+### Prerequisites ###
+This setup uses the ACME DNS-01 challenge, which requires control over your public domain’s DNS records. It works by creating temporary DNS TXT records to prove domain ownership to Let’s Encrypt.
+
+You must have:
+- A public domain name (e.g., yourdomain.net)
+- DNS API access or valid credentials to allow cert-manager to create TXT records automatically under your domain
+
+❗️Note: Placeholder domains like home.example.com cannot be used to issue real certificates. You must use a real, publicly resolvable domain for DNS-01 validation and certificate issuance.
+
+
+### Install cert-manager
+
+On microk8s enable cert-manager add-on with this command:
+```bash
+sudo microk8s enable cert-manager
+```
+
+On K3s you can deploy cert-manager with helm:
+```bash
+On K3s deploy cert-manager with helm:
+helm repo add jetstack https://charts.jetstack.io --force-update
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version v1.17.2 \
+  --set crds.enabled=true
+```  
+
+### Setup cert-manager and Request Certificate
+
+Provided templates and instructions describe the steps for configuring cert-manager with Cloudflare DNS as an example. For other DNS hosting providers, please check cert-manager documentation. 
+
+❗️Note: You need to replace the placeholder domain `example.com` with your own public domain in template files and command examples below.
+
+1. Assuming you already have a public DNS domain. For the testing in local private network, choose/create some subdomain e.g. `home.` in your public DNS hosting records. The A record of public domain does not need to point to any live IP address when using DNS-01. However, you may set it to a placeholder IP for consistency (`0.0.0.0`). 
+
+2. Create a Cloudflare API token for ACME DNS-01 challenge and place the key in template file `cloudflare-api-token-secret.yaml`. In the Cloudflare dashboard, create an API token with the following permissions.
+
+Permissions:
+  - Zone - Zone - Read
+  - Zone - DNS - Edit
+  Zone resources:
+  - Include - Specific zone - <YOUR_DOMAIN> 
+
+Then, update the template file `cloudflare-api-token-secret.yaml` with the created API token:
+```bash
+cd cert-manager
+nano cloudflare-api-token-secret.yaml
+```
+
+3. Create certificate cluster issuer using Let's Encrypt staging environment. Review template file `letsencrypt-staging-clusterissuer.yaml` and set a valid email.
+
+4. Create certificate definition using provided template file `proxy-certificate.yaml`. Edit the file and ensure that:
+  - certificate `secretName:` name matches the secret `name:` in Kong gateway template file `gateway/kong/kong-gtw.yaml`. Otherwise it does not matter what name you choose to use.
+  - certificate `dnsNames:` matches your chosen public dns domains.
+  - certificate  `organizations:` Optionally set organization: field for informational purposes.
+
+5. Create the cert-manager resources using the prepared manifest templates:
+```bash
+# Apply secret containing Cloudflare API token
+kubectl apply -f cloudflare-api-token-secret.yaml
+
+# Apply a ClusterIssuer using Let's Encrypt staging
+kubectl apply -f letsencrypt-staging-clusterissuer.yaml
+
+# Apply the certificate definition to request a wildcard cert
+kubectl apply -f proxy-certificate.yaml
+```
+
+
+6. You can monitor the issuance of the certificate by commands:
+  ```bash
+  kubectl get cert,crs -n gateway
+  kubectl describe cert -n gateway
+  kubectl describe crs -n gateway
+  ```
+  
+7. Once certificate is ready, Kong should now present it when querying the proxy address with https.
+```bash
+# You should now see a Let's Encrypt certificate instead of the default Kong self signed certificate
+```bash
+curl -ivko /dev/null https://proxy.home.example.com
+```
+8. Next, check the http routing still works. Try accessing the homepage using browser.
+```bash
+https://proxy.home.example.com :  Access the Homepage service with browser.
+```
+The homepage should open, but again with certificate warning. Check the presented certificate details. You should see the Let's Encrypt `Staging` certificate created for your own public domain.
+
+This concludes the steps of testing the automatic creation and management of Let's Encrypt certificates using cert-manager. If you would like to get real trusted production certificates from Let's Encrypt and update all the remaining configs to match your domain, please proceed with changes explained in next chapter.
+
+### Request Let's Encrypt Production Certificate and Finalize Setup 
+If you initially used a placeholder domain like `home.example.com` (as in the template defaults), it must be replaced with your actual public domain. To issue a valid production certificate from Let's Encrypt and update all relevant configurations, follow these steps:
+
+1. Create the cert-manager Clusterissuer for Let's-Encrypt production certificates. Edit the file `letsencrypt-prod-clusterissuer.yaml` and include a valid email address. Then apply the configuration.
+```bash
+kubectl apply -f letsencrypt-prod-clusterissuer.yaml
+```
+2. Replace the staging certificate with a production certificate. Edit file `proxy-certificate.yaml` and change the `issuerRef.name` value from `letsencrypt-staging` to `letsencrypt-prod`. Apply the configuration.
+```bash
+kubectl apply -f proxy-certificate.yaml
+```
+3. Update Kong Gateway and local DNS configuration. Revisit the chapter *Kong Gateway Setup with Gateway API config*. Update all references to `home.example.com` to your actual public domain. Re-apply all affected manifests. Also ensure your local DNS records (e.g. in Pi-hole) are updated to match your public domain setup. 
+
+4. Update the Homepage deployment configuration:
+- In `homepage/homepage-deployment.yaml`, update the `HOMEPAGE_ALLOWED_HOSTS` environment variable to include your public domain
+- Also in `homepage-configmap.yaml, update domain names in `services.yaml: |` section
+Then, re-apply the config:
+```bash
+kubectl apply -f ./homepage-configmap.yaml -f homepage-deployment.yaml
+
+# Tip: After applying the updated ConfigMap, the Homepage app must be restarted to reflect the changes:
+kubectl rollout restart deployment homepage -n homepage 
+```
+
+### Verify Setup
+  ```bash
+  # Check that Kong now serves a Let's Encrypt production certificate
+  curl -ivko /dev/null https://proxy.home.<YOUR_DOMAIN>
+
+  # Check if secure connection is established (no certificate warnings). If there are errors check that the DNS name matches your actual domain configured in local DNS server (pi-hole).   
+  curl -ivo /dev/null https://proxy.home.<YOUR_DOMAIN>
+
+  # Now, check Homepage loads when accessed using browser and curl. With curl you should see HTML output in the terminal. if not, check Homepage http route matches your domain. 
+  curl -iv https://proxy.home.<YOUR_DOMAIN>
+
+  # Check also all other services are accessible via Homepage using the browser.
+
+  ```
 ## License
 
 This project is licensed under the [MIT License](./LICENSE).
