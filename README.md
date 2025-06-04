@@ -501,7 +501,6 @@ kubectl apply -f proxy-certificate.yaml
 7. Once certificate is ready, Kong should now present it when querying the proxy address with https.
 ```bash
 # You should now see a Let's Encrypt certificate instead of the default Kong self signed certificate
-```bash
 curl -ivko /dev/null https://proxy.home.example.com
 ```
 8. Next, check the http routing still works. Try accessing the homepage using browser.
